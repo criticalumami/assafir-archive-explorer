@@ -172,7 +172,7 @@
     }
     activeController = new AbortController();
 
-    statusText.textContent = "Searching As-Safir archive...";
+    statusText.textContent = "querying index...";
     latencyBadge.hidden = true;
 
     const t0 = performance.now();
@@ -195,7 +195,7 @@
       }
 
       const elapsed = Math.round(performance.now() - t0);
-      latencyBadge.textContent = fromCache ? `0 ms (cached)` : `${elapsed} ms`;
+      latencyBadge.textContent = fromCache ? `0ms [cache]` : `${elapsed}ms`;
       latencyBadge.hidden = false;
 
       if (state.mode === "manifest") {
@@ -205,7 +205,7 @@
       }
     } catch (err) {
       if (err.name === "AbortError") return;
-      statusText.textContent = `Error communicating with archive API: ${err.message}`;
+      statusText.textContent = `err: ${err.message}`;
       resultsContainer.innerHTML = "";
     }
   }
@@ -219,12 +219,12 @@
     state.currentManifest = [];
 
     const totalPages = Math.max(1, Math.ceil(globalCount / state.pageSize));
-    statusText.textContent = `Found ${globalCount.toLocaleString()} matching articles`;
+    statusText.textContent = `hits: ${globalCount.toLocaleString()}`;
 
     updatePaginationUI(totalPages, true);
 
     if (!articles.length) {
-      resultsContainer.innerHTML = `<div class="result-card"><p>No articles found matching your criteria.</p></div>`;
+      resultsContainer.innerHTML = `<div class="result-card"><p>0 results.</p></div>`;
       return;
     }
 
@@ -238,38 +238,34 @@
 
       const dateFormatted = article.year && article.month && article.day
         ? `${article.year}-${String(article.month).padStart(2, "0")}-${String(article.day).padStart(2, "0")}`
-        : (article.date ? article.date.split(",")[0] : "Unknown Date");
+        : (article.date ? article.date.split(",")[0] : "n/a");
 
-      const pageBadge = article.page ? `<span class="meta-pill">Page ${article.page}</span>` : "";
-      const editionBadge = article.edition ? `<span class="meta-pill">Issue #${article.edition}</span>` : "";
+      const pageBadge = article.page ? `<span class="meta-pill">p.${String(article.page).padStart(2, "0")}</span>` : "";
+      const editionBadge = article.edition ? `<span class="meta-pill">#${article.edition}</span>` : "";
       const topicBadge = article.topicName && article.topicName !== "UNKNOWN"
         ? `<span class="meta-pill" dir="auto">${escapeHtml(article.topicName)}</span>`
         : "";
       const authorBadge = article.authorName && article.authorName !== "UNKNOWN"
-        ? `<span class="meta-pill" dir="auto">✍ ${escapeHtml(article.authorName)}</span>`
+        ? `<span class="meta-pill" dir="auto">${escapeHtml(article.authorName)}</span>`
         : "";
 
       const snippetRaw = (article.content || "").slice(0, 260);
       const snippetHtml = highlightQuery(snippetRaw, state.query);
-      const titleHtml = highlightQuery(article.title || "Untitled Article", state.query);
+      const titleHtml = highlightQuery(article.title || "untitled", state.query);
 
       const thumbHtml = pdfName
-        ? `<div class="card-thumb-wrap" data-preview-idx="${idx}" title="Click to preview full text & newspaper scan">
-             <img class="card-thumb" src="${getPageThumbUrl(pdfName, 400)}" alt="Page ${article.page || ""} thumbnail" loading="${idx < 6 ? "eager" : "lazy"}" />
+        ? `<div class="card-thumb-wrap" data-preview-idx="${idx}" title="view scan &amp; ocr">
+             <img class="card-thumb" src="${getPageThumbUrl(pdfName, 400)}" alt="p.${article.page || ""}" loading="${idx < 6 ? "eager" : "lazy"}" />
            </div>`
         : "";
 
       const actionsHtml = pdfName
         ? `<div class="card-actions">
-             <button type="button" class="btn btn-ghost btn-sm" data-preview-idx="${idx}">Read / Scan</button>
-             <a href="${getPagePdfUrl(pdfName)}" class="btn btn-primary btn-sm" target="_blank" rel="noopener" title="Download this page PDF (${pdfName})">
-               ⬇ Page PDF
-             </a>
-             <a href="${getIssueZipUrl(pdfName)}" class="btn btn-secondary btn-sm" target="_blank" rel="noopener" title="Download full daily newspaper issue as ZIP">
-               ⬇ Issue ZIP
-             </a>
+             <button type="button" class="btn" data-preview-idx="${idx}">[read]</button>
+             <a href="${getPagePdfUrl(pdfName)}" class="btn btn-invert" target="_blank" rel="noopener" title="Download page PDF (${pdfName})">[page.pdf]</a>
+             <a href="${getIssueZipUrl(pdfName)}" class="btn" target="_blank" rel="noopener" title="Download full daily issue as ZIP">[issue.zip]</a>
            </div>`
-        : `<span class="pdf-filename">No PDF linked</span>`;
+        : `<span class="pdf-filename">no-pdf</span>`;
 
       card.innerHTML = `
         <div class="card-top">
@@ -310,20 +306,18 @@
     state.currentArticles = [];
     state.totalCount = validBuckets.length;
 
-    // Count unique daily issues
     const uniqueDates = new Set(
       validBuckets.map((b) => b.key.slice(0, 8)).filter((d) => /^\d{8}$/.test(d))
     );
 
-    statusText.textContent = `Loaded ${validBuckets.length.toLocaleString()} unique Page PDFs across ${uniqueDates.size.toLocaleString()} daily issues (Click "Export URLs" for bulk CLI download)`;
+    statusText.textContent = `manifest: ${validBuckets.length.toLocaleString()} pdfs / ${uniqueDates.size.toLocaleString()} issues (use [export-urls] for full list)`;
     updatePaginationUI(1, false);
 
     if (!validBuckets.length) {
-      resultsContainer.innerHTML = `<div class="result-card"><p>No PDF pages found for this filter.</p></div>`;
+      resultsContainer.innerHTML = `<div class="result-card"><p>0 pdfs found.</p></div>`;
       return;
     }
 
-    // Render top 400 in DOM for instant interactivity; full 10,000 available in Export URLs
     const displayBuckets = validBuckets.slice(0, 400);
     const fragment = document.createDocumentFragment();
 
@@ -335,16 +329,12 @@
 
       card.innerHTML = `
         <div class="manifest-info">
-          <span class="manifest-date">${escapeHtml(dateStr)} ${page ? `&bull; Page ${page}` : ""}</span>
-          <span class="manifest-sub">${escapeHtml(pdfName)} &bull; ${b.doc_count} matching article(s)</span>
+          <span class="manifest-date">${escapeHtml(dateStr)} ${page ? `// p.${String(page).padStart(2, "0")}` : ""}</span>
+          <span class="manifest-sub">${escapeHtml(pdfName)} (${b.doc_count} articles)</span>
         </div>
         <div class="card-actions">
-          <a href="${getPagePdfUrl(pdfName)}" class="btn btn-primary btn-sm" target="_blank" rel="noopener">
-            ⬇ PDF
-          </a>
-          <a href="${getIssueZipUrl(pdfName)}" class="btn btn-secondary btn-sm" target="_blank" rel="noopener">
-            ⬇ Issue ZIP
-          </a>
+          <a href="${getPagePdfUrl(pdfName)}" class="btn btn-invert" target="_blank" rel="noopener">[page.pdf]</a>
+          <a href="${getIssueZipUrl(pdfName)}" class="btn" target="_blank" rel="noopener">[issue.zip]</a>
         </div>
       `;
       fragment.appendChild(card);
@@ -357,7 +347,7 @@
     if (!showPagination) {
       prevPageBtn.disabled = true;
       nextPageBtn.disabled = true;
-      pageIndicator.textContent = "Manifest (All)";
+      pageIndicator.textContent = "all";
       paginationBottom.hidden = true;
       return;
     }
@@ -370,7 +360,7 @@
     prevPageBottomBtn.disabled = !canPrev;
     nextPageBottomBtn.disabled = !canNext;
 
-    const label = `Page ${state.pageNumber.toLocaleString()} of ${totalPages.toLocaleString()}`;
+    const label = `${state.pageNumber}/${totalPages.toLocaleString()}`;
     pageIndicator.textContent = label;
     pageIndicatorBottom.textContent = label;
     paginationBottom.hidden = totalPages <= 1;
@@ -382,7 +372,7 @@
     if (!article) return;
 
     const pdfName = getPdfFilename(article);
-    dialogTitle.textContent = article.title || "Untitled Article";
+    dialogTitle.textContent = article.title || "untitled";
 
     const dateFormatted = article.year && article.month && article.day
       ? `${article.year}-${String(article.month).padStart(2, "0")}-${String(article.day).padStart(2, "0")}`
@@ -390,12 +380,12 @@
 
     const metaParts = [
       dateFormatted,
-      article.edition ? `Issue #${article.edition}` : "",
-      article.page ? `Page ${article.page}` : "",
-      article.authorName && article.authorName !== "UNKNOWN" ? `Author: ${article.authorName}` : "",
-      pdfName ? `File: ${pdfName}` : "",
+      article.edition ? `#${article.edition}` : "",
+      article.page ? `p.${article.page}` : "",
+      article.authorName && article.authorName !== "UNKNOWN" ? article.authorName : "",
+      pdfName || "",
     ].filter(Boolean);
-    dialogMeta.textContent = metaParts.join("  •  ");
+    dialogMeta.textContent = metaParts.join(" | ");
 
     if (pdfName) {
       dialogDownloadPdf.href = getPagePdfUrl(pdfName);
@@ -412,14 +402,13 @@
       dialogScanImg.removeAttribute("src");
     }
 
-    // Entities
     const entities = Array.isArray(article.entities) ? article.entities : [];
     dialogEntities.innerHTML = entities
       .slice(0, 12)
       .map((e) => `<span class="meta-pill" dir="auto">${escapeHtml(e.name)}</span>`)
       .join("");
 
-    dialogContent.innerHTML = highlightQuery(article.content || "No OCR text available.", state.query);
+    dialogContent.innerHTML = highlightQuery(article.content || "no ocr text.", state.query);
     previewDialog.showModal();
   }
 
@@ -488,7 +477,7 @@
   function changePage(delta) {
     state.pageNumber = Math.max(1, state.pageNumber + delta);
     executeSearch();
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    window.scrollTo({ top: 0, behavior: "instant" });
   }
   prevPageBtn.addEventListener("click", () => changePage(-1));
   nextPageBtn.addEventListener("click", () => changePage(1));
@@ -551,10 +540,10 @@
   copyExportBtn.addEventListener("click", async () => {
     await navigator.clipboard.writeText(exportTextarea.value);
     const orig = copyExportBtn.textContent;
-    copyExportBtn.textContent = "✓ Copied!";
+    copyExportBtn.textContent = "[yanked]";
     setTimeout(() => {
       copyExportBtn.textContent = orig;
-    }, 1500);
+    }, 1200);
   });
 
   // Initial load
