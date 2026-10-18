@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>As-Safir Archive Explorer — Fast Search & PDF Downloader</title>
+  <meta name="description" content="Blazing-fast full-text search and direct PDF / full-issue ZIP downloader for the As-Safir (السفير) newspaper archive (1974–2016)." />
+  <link rel="preconnect" href="https://archive.assafir.com" crossorigin />
+  <link rel="dns-prefetch" href="https://archive.assafir.com" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="container topbar-inner">
+      <div class="brand">
+        <span class="brand-badge" lang="ar" dir="rtl">السفير</span>
+        <div>
+          <h1 class="brand-title">As-Safir Archive Explorer</h1>
+          <p class="brand-subtitle">2.05M+ Articles (1974–2016) &bull; Direct Page PDF &amp; Full-Issue ZIP Downloader</p>
+        </div>
+      </div>
+      <div class="quick-date-box">
+        <label for="quickIssueDate" class="sr-only">Direct Issue Date</label>
+        <input type="date" id="quickIssueDate" min="1974-03-26" max="2016-12-31" value="1982-06-06" title="Pick any date to directly download its full issue ZIP or page 1 PDF" />
+        <button type="button" id="quickZipBtn" class="btn btn-secondary btn-sm" title="Download all pages of this date as a single ZIP">
+          ⬇ Issue .ZIP
+        </button>
+        <button type="button" id="quickPage1Btn" class="btn btn-ghost btn-sm" title="Download Front Page (Page 01) PDF for this date">
+          ⬇ Page 1 .PDF
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="container main-content">
+    <!-- Search & Filter Control Panel -->
+    <section class="search-panel" aria-label="Search Archive">
+      <form id="searchForm" class="search-form">
+        <div class="search-input-wrap">
+          <svg class="search-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+            <path fill="currentColor" d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
+          </svg>
+          <input
+            type="search"
+            id="queryInput"
+            class="search-input"
+            dir="auto"
+            placeholder="Search 2,059,377 articles in Arabic or English (e.g., بيروت، فلسطين، فيروز) — or leave blank to browse by date..."
+            autocomplete="off"
+          />
+          <button type="submit" id="searchBtn" class="btn btn-primary">
+            Search
+          </button>
+        </div>
+
+        <div class="filters-row">
+          <div class="filter-group">
+            <label for="fromDate">From Date</label>
+            <input type="date" id="fromDate" min="1974-01-01" max="2017-12-31" />
+          </div>
+          <div class="filter-group">
+            <label for="toDate">To Date</label>
+            <input type="date" id="toDate" min="1974-01-01" max="2017-12-31" />
+          </div>
+          <div class="filter-group">
+            <label for="pageSizeSelect">Results / Page</label>
+            <select id="pageSizeSelect">
+              <option value="24" selected>24 items</option>
+              <option value="48">48 items</option>
+              <option value="96">96 items</option>
+            </select>
+          </div>
+          <div class="filter-group">
+            <label for="modeSelect">Search Mode</label>
+            <select id="modeSelect">
+              <option value="articles" selected>Articles + PDFs (Detailed)</option>
+              <option value="manifest">Fast PDF Manifest (Up to 10,000 PDFs in 1 call)</option>
+            </select>
+          </div>
+          <div class="filter-actions">
+            <button type="button" id="resetBtn" class="btn btn-ghost btn-sm">Reset Filters</button>
+            <button type="button" id="exportUrlsBtn" class="btn btn-secondary btn-sm" title="Export direct PDF/ZIP download URLs for current results (for curl / aria2c)">
+              📋 Export URLs
+            </button>
+          </div>
+        </div>
+
+        <div class="preset-chips" aria-label="Quick search presets">
+          <span class="preset-label">Quick Queries:</span>
+          <button type="button" class="chip" data-query="بيروت" data-from="1982-06-01" data-to="1982-09-30">بيروت 1982</button>
+          <button type="button" class="chip" data-query="فيروز" data-from="" data-to="">فيروز</button>
+          <button type="button" class="chip" data-query="غسان كنفاني" data-from="" data-to="">غسان كنفاني</button>
+          <button type="button" class="chip" data-query="الحرب الأهلية" data-from="1975-04-01" data-to="1976-12-31">1975–1976</button>
+          <button type="button" class="chip" data-query="ناجي العلي" data-from="" data-to="">ناجي العلي</button>
+          <button type="button" class="chip" data-query="" data-from="1974-03-26" data-to="1974-04-30">First Issues (Mar–Apr 1974)</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- Status & Pagination Bar -->
+    <section class="status-bar" aria-live="polite">
+      <div class="status-meta">
+        <span id="statusText">Ready. Loading latest archive entries...</span>
+        <span id="latencyBadge" class="badge" hidden>0 ms</span>
+      </div>
+      <div class="pagination-controls" id="paginationTop">
+        <button type="button" id="prevPageBtn" class="btn btn-ghost btn-sm" disabled>&larr; Prev</button>
+        <span id="pageIndicator" class="page-indicator">Page 1</span>
+        <button type="button" id="nextPageBtn" class="btn btn-ghost btn-sm" disabled>Next &rarr;</button>
+      </div>
+    </section>
+
+    <!-- Results Grid -->
+    <section id="resultsContainer" class="results-grid" aria-label="Search Results"></section>
+
+    <!-- Bottom Pagination -->
+    <div class="bottom-pagination" id="paginationBottom" hidden>
+      <button type="button" id="prevPageBottomBtn" class="btn btn-secondary">&larr; Previous Page</button>
+      <span id="pageIndicatorBottom" class="page-indicator">Page 1</span>
+      <button type="button" id="nextPageBottomBtn" class="btn btn-secondary">Next Page &rarr;</button>
+    </div>
+  </main>
+
+  <!-- Article & Page Scan Preview Modal Dialog -->
+  <dialog id="previewDialog" closedby="any" aria-labelledby="dialogTitle">
+    <div class="dialog-inner">
+      <header class="dialog-header">
+        <div class="dialog-title-wrap">
+          <h2 id="dialogTitle" class="dialog-title" dir="auto">Article Preview</h2>
+          <p id="dialogMeta" class="dialog-meta"></p>
+        </div>
+        <div class="dialog-actions">
+          <a id="dialogDownloadPdf" href="#" class="btn btn-primary btn-sm" target="_blank" rel="noopener">
+            ⬇ Page PDF
+          </a>
+          <a id="dialogDownloadZip" href="#" class="btn btn-secondary btn-sm" target="_blank" rel="noopener">
+            ⬇ Full Issue ZIP
+          </a>
+          <button type="button" id="closeDialogBtn" class="btn btn-ghost btn-sm" aria-label="Close modal">✕</button>
+        </div>
+      </header>
+      <div class="dialog-body">
+        <div class="dialog-article-pane">
+          <div id="dialogEntities" class="entity-tags"></div>
+          <article id="dialogContent" class="article-content" dir="auto"></article>
+        </div>
+        <div class="dialog-image-pane">
+          <div class="scan-toolbar">
+            <span>Newspaper Page Scan</span>
+            <a id="dialogOpenImage" href="#" target="_blank" rel="noopener" class="scan-link">Open Full Scan &nearr;</a>
+          </div>
+          <div class="scan-frame">
+            <img id="dialogScanImg" alt="Scanned newspaper page" loading="lazy" />
+          </div>
+        </div>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- Export URLs Modal Dialog -->
+  <dialog id="exportDialog" closedby="any" aria-labelledby="exportDialogTitle">
+    <div class="dialog-inner export-dialog-inner">
+      <header class="dialog-header">
+        <div>
+          <h2 id="exportDialogTitle" class="dialog-title">Bulk Download URLs &amp; CLI Command</h2>
+          <p class="dialog-meta">Copy direct PDF or daily Issue ZIP URLs for <code>aria2c</code>, <code>curl</code>, or <code>wget</code>.</p>
+        </div>
+        <button type="button" id="closeExportBtn" class="btn btn-ghost btn-sm" aria-label="Close export modal">✕</button>
+      </header>
+      <div class="export-body">
+        <div class="export-controls">
+          <label>
+            <input type="radio" name="exportType" value="pdf" checked />
+            Individual Page PDFs (<code>/raw/YYYYMMDDPP.pdf</code>)
+          </label>
+          <label>
+            <input type="radio" name="exportType" value="zip" />
+            Deduplicated Daily Issue ZIPs (<code>/raw-zip/YYYYMMDD01.pdf</code>)
+          </label>
+          <button type="button" id="copyExportBtn" class="btn btn-primary btn-sm">Copy URLs to Clipboard</button>
+        </div>
+        <textarea id="exportTextarea" class="export-textarea" readonly rows="12"></textarea>
+        <div class="cli-hint">
+          <strong>Fast parallel download with <code>aria2c</code> or <code>xargs</code>:</strong>
+          <pre id="cliSnippet">xargs -n 1 -P 4 curl -LOJ &lt; urls.txt</pre>
+        </div>
+      </div>
+    </div>
+  </dialog>
+
+  <script src="app.js" defer></script>
+</body>
+</html>
