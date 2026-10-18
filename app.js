@@ -103,8 +103,124 @@
     return `${API_BASE}/articles/raw-zip/${encodeURIComponent(pdfName)}`;
   }
 
-  function getPageThumbUrl(pdfName, res = 400) {
+  function getPageThumbUrl(pdfName, res = 600) {
     return `${API_BASE}/images/raw/${encodeURIComponent(pdfName)}/${res}`;
+  }
+
+  /**
+   * Opens a PDF inline in a new browser tab instead of downloading it.
+   * Because archive.assafir.com sends `Content-Disposition: attachment` and
+   * `Content-Type: application/octet-stream`, a raw link forces a file download.
+   * Fetching the bytes via CORS and creating an `application/pdf` Blob URL
+   * renders the PDF natively inside the new tab.
+   */
+  async function openPdfInNewTab(pdfName) {
+    const rawUrl = getPagePdfUrl(pdfName);
+    const tab = window.open("", "_blank");
+    if (!tab) {
+      window.open(rawUrl, "_blank", "noopener");
+      return;
+    }
+
+    tab.document.write(`<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>${escapeHtml(pdfName)} // assafir(1)</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #0c0c0c;
+      color: #d8d8d8;
+      font-family: ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
+      font-size: 13px;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .bar {
+      background: #141414;
+      border-bottom: 1px solid #2e2e2e;
+      height: 28px;
+      padding: 0 10px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+    }
+    .tag { background: #d8d8d8; color: #0c0c0c; font-weight: 700; padding: 1px 6px; margin-right: 8px; }
+    .btn {
+      color: #d8d8d8;
+      background: #0c0c0c;
+      border: 1px solid #2e2e2e;
+      padding: 1px 8px;
+      text-decoration: none;
+      font-size: 12px;
+    }
+    .btn:hover { background: #d8d8d8; color: #0c0c0c; }
+    #viewer { flex: 1; width: 100%; border: 0; background: #1a1a1a; }
+    #loader { padding: 24px; color: #999; }
+  </style>
+</head>
+<body>
+  <div class="bar">
+    <div><span class="tag">pdf</span><span>${escapeHtml(pdfName)}</span> <span id="prog" style="color:#7a7a7a;margin-left:8px;">streaming...</span></div>
+    <div><a id="dlLink" class="btn" href="${escapeHtml(rawUrl)}" download="${escapeHtml(pdfName)}">[save.pdf]</a></div>
+  </div>
+  <div id="loader">fetching ${escapeHtml(pdfName)} from archive.assafir.com...</div>
+</body>
+</html>`);
+    tab.document.close();
+
+    try {
+      const resp = await fetch(rawUrl);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+
+      const reader = resp.body ? resp.body.getReader() : null;
+      const progEl = tab.document.getElementById("prog");
+      let blob;
+
+      if (reader) {
+        const chunks = [];
+        let received = 0;
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          chunks.push(value);
+          received += value.byteLength;
+          if (progEl) {
+            progEl.textContent = `${(received / (1024 * 1024)).toFixed(2)} MB`;
+          }
+        }
+        blob = new Blob(chunks, { type: "application/pdf" });
+      } else {
+        const buf = await resp.arrayBuffer();
+        if (progEl) {
+          progEl.textContent = `${(buf.byteLength / (1024 * 1024)).toFixed(2)} MB`;
+        }
+        blob = new Blob([buf], { type: "application/pdf" });
+      }
+
+      const blobUrl = URL.createObjectURL(blob);
+      const dlLink = tab.document.getElementById("dlLink");
+      if (dlLink) dlLink.href = blobUrl;
+
+      const loader = tab.document.getElementById("loader");
+      if (loader) loader.remove();
+
+      const embed = tab.document.createElement("embed");
+      embed.id = "viewer";
+      embed.type = "application/pdf";
+      embed.src = blobUrl;
+      tab.document.body.appendChild(embed);
+    } catch (err) {
+      const loader = tab.document.getElementById("loader");
+      if (loader) {
+        loader.textContent = `err loading inline pdf (${err.message}). redirecting to direct stream...`;
+      }
+      tab.location.href = rawUrl;
+    }
   }
 
   function formatPdfFilenameMeta(pdfName) {
@@ -249,20 +365,20 @@
         ? `<span class="meta-pill" dir="auto">${escapeHtml(article.authorName)}</span>`
         : "";
 
-      const snippetRaw = (article.content || "").slice(0, 260);
+      const snippetRaw = (article.content || "").slice(0, 380);
       const snippetHtml = highlightQuery(snippetRaw, state.query);
       const titleHtml = highlightQuery(article.title || "untitled", state.query);
 
       const thumbHtml = pdfName
         ? `<div class="card-thumb-wrap" data-preview-idx="${idx}" title="view scan &amp; ocr">
-             <img class="card-thumb" src="${getPageThumbUrl(pdfName, 400)}" alt="p.${article.page || ""}" loading="${idx < 6 ? "eager" : "lazy"}" />
+             <img class="card-thumb" src="${getPageThumbUrl(pdfName, 600)}" alt="p.${article.page || ""}" loading="${idx < 6 ? "eager" : "lazy"}" />
            </div>`
         : "";
 
       const actionsHtml = pdfName
         ? `<div class="card-actions">
              <button type="button" class="btn" data-preview-idx="${idx}">[read]</button>
-             <a href="${getPagePdfUrl(pdfName)}" class="btn btn-invert" target="_blank" rel="noopener" title="Download page PDF (${pdfName})">[page.pdf]</a>
+             <a href="${getPagePdfUrl(pdfName)}" data-open-pdf="${escapeHtml(pdfName)}" class="btn btn-invert" target="_blank" rel="noopener" title="Open page PDF (${pdfName}) in a new tab">[page.pdf]</a>
              <a href="${getIssueZipUrl(pdfName)}" class="btn" target="_blank" rel="noopener" title="Download full daily issue as ZIP">[issue.zip]</a>
            </div>`
         : `<span class="pdf-filename">no-pdf</span>`;
@@ -333,7 +449,7 @@
           <span class="manifest-sub">${escapeHtml(pdfName)} (${b.doc_count} articles)</span>
         </div>
         <div class="card-actions">
-          <a href="${getPagePdfUrl(pdfName)}" class="btn btn-invert" target="_blank" rel="noopener">[page.pdf]</a>
+          <a href="${getPagePdfUrl(pdfName)}" data-open-pdf="${escapeHtml(pdfName)}" class="btn btn-invert" target="_blank" rel="noopener">[page.pdf]</a>
           <a href="${getIssueZipUrl(pdfName)}" class="btn" target="_blank" rel="noopener">[issue.zip]</a>
         </div>
       `;
@@ -389,6 +505,7 @@
 
     if (pdfName) {
       dialogDownloadPdf.href = getPagePdfUrl(pdfName);
+      dialogDownloadPdf.setAttribute("data-open-pdf", pdfName);
       dialogDownloadZip.href = getIssueZipUrl(pdfName);
       dialogDownloadPdf.hidden = false;
       dialogDownloadZip.hidden = false;
@@ -399,6 +516,7 @@
     } else {
       dialogDownloadPdf.hidden = true;
       dialogDownloadZip.hidden = true;
+      dialogDownloadPdf.removeAttribute("data-open-pdf");
       dialogScanImg.removeAttribute("src");
     }
 
@@ -412,12 +530,21 @@
     previewDialog.showModal();
   }
 
-  // Delegate clicks on result cards for preview modal
-  resultsContainer.addEventListener("click", (e) => {
-    const trigger = e.target.closest("[data-preview-idx]");
-    if (!trigger) return;
-    const idx = Number(trigger.getAttribute("data-preview-idx"));
-    openArticlePreview(idx);
+  // Delegate clicks on result cards for preview modal & inline PDF tab viewer
+  document.addEventListener("click", (e) => {
+    const pdfTrigger = e.target.closest("[data-open-pdf]");
+    if (pdfTrigger) {
+      e.preventDefault();
+      const pdfName = pdfTrigger.getAttribute("data-open-pdf");
+      if (pdfName) openPdfInNewTab(pdfName);
+      return;
+    }
+
+    const previewTrigger = e.target.closest("[data-preview-idx]");
+    if (previewTrigger && resultsContainer.contains(previewTrigger)) {
+      const idx = Number(previewTrigger.getAttribute("data-preview-idx"));
+      openArticlePreview(idx);
+    }
   });
 
   // Form & Filter Event Listeners
@@ -500,7 +627,7 @@
   quickPage1Btn.addEventListener("click", () => {
     const ymd = getQuickDatePrefix();
     if (!ymd) return;
-    window.open(getPagePdfUrl(`${ymd}01.pdf`), "_blank", "noopener");
+    openPdfInNewTab(`${ymd}01.pdf`);
   });
 
   // Bulk URL Export Dialog
