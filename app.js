@@ -126,7 +126,7 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>${escapeHtml(pdfName)} // assafir(1)</title>
+  <title>${escapeHtml(pdfName)} // saf(1)</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {

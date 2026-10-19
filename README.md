@@ -1,6 +1,6 @@
-# As-Safir Archive Explorer (السفير)
+# saf
 
-A blazing-fast, zero-dependency static web application for searching the **As-Safir (السفير)** Lebanese newspaper archive (1974–2016, 2.05M+ articles) and directly downloading **individual Page PDFs** or **full daily Issue ZIPs** without needing a backend server.
+Minimalist, zero-dependency static web application for searching the **As-Safir (السفير)** Lebanese newspaper archive (1974–2016, 2.05M+ articles) and viewing/downloading **individual Page PDFs** or **full daily Issue ZIPs**.
 
 ## Features
 
