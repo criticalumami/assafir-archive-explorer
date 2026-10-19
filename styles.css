@@ -81,7 +81,7 @@ body {
 
 /* Main container */
 .wrap {
-  max-width: 1520px;
+  max-width: 1560px;
   margin: 0 auto;
   padding: 8px;
 }
@@ -241,6 +241,11 @@ body {
   color: var(--bg);
 }
 
+.view-toggle {
+  display: inline-flex;
+  gap: 4px;
+}
+
 /* Infobar */
 .infobar {
   display: flex;
@@ -273,7 +278,107 @@ body {
   color: var(--fg-dim);
 }
 
-/* Results Grid / Large Thumbnail Cards */
+/* ==========================================
+   VIEW 1: THUMBNAIL GALLERY GRID (DEFAULT)
+   ========================================== */
+.results-thumbs {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 8px;
+}
+
+.thumb-tile {
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.thumb-tile:hover {
+  border-color: var(--fg-bright);
+}
+
+/* Off-screen rendering deferral (modern-web-guidance: defer-rendering-heavy-content) */
+.thumb-tile.deferred-card {
+  content-visibility: auto;
+  contain-intrinsic-size: auto none auto 410px;
+}
+
+.thumb-tile-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  padding: 4px 6px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+}
+
+.thumb-tile-date {
+  color: var(--fg-bright);
+  font-weight: 700;
+}
+
+.thumb-tile-page {
+  color: var(--fg-dim);
+}
+
+.thumb-tile-img-wrap {
+  width: 100%;
+  aspect-ratio: 446 / 600;
+  background: var(--bg);
+  overflow: hidden;
+  cursor: pointer;
+  position: relative;
+}
+
+.thumb-tile-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top center;
+  display: block;
+  filter: grayscale(100%) contrast(1.12);
+}
+
+.thumb-tile-caption {
+  padding: 5px 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--fg);
+  border-top: 1px solid var(--border);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.thumb-tile-caption:hover {
+  text-decoration: underline;
+  color: var(--fg-bright);
+}
+
+.thumb-tile-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  padding: 4px 6px;
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.thumb-tile-footer .btn {
+  flex: 1;
+  padding: 2px 4px;
+  font-size: 11px;
+}
+
+/* ==========================================
+   VIEW 2: DETAILED ARTICLE CARDS
+   ========================================== */
 .results-list {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(520px, 1fr));
@@ -294,7 +399,6 @@ body {
   border-color: var(--border-focus);
 }
 
-/* Off-screen rendering deferral (modern-web-guidance: defer-rendering-heavy-content) */
 .result-card.deferred-card {
   content-visibility: auto;
   contain-intrinsic-size: auto none auto 285px;
@@ -306,7 +410,6 @@ body {
   align-items: flex-start;
 }
 
-/* Large, legible newspaper page thumbnail (180x242, 446x600 source) */
 .card-thumb-wrap {
   width: 180px;
   height: 242px;
@@ -622,6 +725,9 @@ dialog::backdrop {
   .dialog-body,
   .results-list {
     grid-template-columns: 1fr;
+  }
+  .results-thumbs {
+    grid-template-columns: repeat(auto-fill, minmax(165px, 1fr));
   }
   .card-thumb-wrap {
     width: 130px;

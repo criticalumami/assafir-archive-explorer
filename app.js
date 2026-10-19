@@ -6,6 +6,9 @@
     query: "",
     fromDate: "",
     toDate: "",
+    sortBy: "relevance",
+    order: "DESC",
+    view: "thumbs", // "thumbs" | "cards"
     pageSize: 24,
     pageNumber: 1,
     mode: "articles", // "articles" | "manifest"
@@ -23,6 +26,10 @@
   const queryInput = document.getElementById("queryInput");
   const fromDateInput = document.getElementById("fromDate");
   const toDateInput = document.getElementById("toDate");
+  const sortSelect = document.getElementById("sortSelect");
+  const viewSelect = document.getElementById("viewSelect");
+  const viewThumbsBtn = document.getElementById("viewThumbsBtn");
+  const viewCardsBtn = document.getElementById("viewCardsBtn");
   const pageSizeSelect = document.getElementById("pageSizeSelect");
   const modeSelect = document.getElementById("modeSelect");
   const resetBtn = document.getElementById("resetBtn");
@@ -109,10 +116,6 @@
 
   /**
    * Opens a PDF inline in a new browser tab instead of downloading it.
-   * Because archive.assafir.com sends `Content-Disposition: attachment` and
-   * `Content-Type: application/octet-stream`, a raw link forces a file download.
-   * Fetching the bytes via CORS and creating an `application/pdf` Blob URL
-   * renders the PDF natively inside the new tab.
    */
   async function openPdfInNewTab(pdfName) {
     const rawUrl = getPagePdfUrl(pdfName);
@@ -256,11 +259,34 @@
     return safe.replace(regex, "<mark>$1</mark>");
   }
 
+  // Sync View Toggle UI
+  function syncViewToggleUI() {
+    viewSelect.value = state.view;
+    if (state.view === "thumbs") {
+      viewThumbsBtn.classList.add("btn-invert");
+      viewCardsBtn.classList.remove("btn-invert");
+      resultsContainer.className = "results-thumbs";
+    } else {
+      viewCardsBtn.classList.add("btn-invert");
+      viewThumbsBtn.classList.remove("btn-invert");
+      resultsContainer.className = "results-list";
+    }
+  }
+
+  function parseSortSelection() {
+    const raw = sortSelect.value || "relevance:DESC";
+    const [sortBy, order] = raw.split(":");
+    state.sortBy = sortBy || "relevance";
+    state.order = order || "DESC";
+  }
+
   // Build Query String for API
   function buildApiUrl() {
     const params = new URLSearchParams();
     params.set("pageSize", state.mode === "manifest" ? "1" : String(state.pageSize));
     params.set("pageNumber", state.mode === "manifest" ? "1" : String(state.pageNumber));
+    params.set("sortBy", state.sortBy);
+    params.set("order", state.order);
 
     if (state.fromDate) params.set("fromDate", state.fromDate);
     if (state.toDate) params.set("toDate", state.toDate);
@@ -281,6 +307,8 @@
 
   // Execute Search
   async function executeSearch() {
+    parseSortSelection();
+    syncViewToggleUI();
     const url = buildApiUrl();
 
     if (activeController) {
@@ -315,9 +343,16 @@
       latencyBadge.hidden = false;
 
       if (state.mode === "manifest") {
-        renderManifestResults(data);
+        const buckets =
+          data?.payload?.aggregations?.["sterms#newPdfPath"]?.buckets || [];
+        state.currentManifest = buckets.filter((b) => b && b.key);
+        state.currentArticles = [];
+        renderCurrentState();
       } else {
-        renderArticleResults(data);
+        state.currentArticles = Array.isArray(data.payload) ? data.payload : [];
+        state.totalCount = Number(data.globalCount || 0);
+        state.currentManifest = [];
+        renderCurrentState();
       }
     } catch (err) {
       if (err.name === "AbortError") return;
@@ -326,17 +361,85 @@
     }
   }
 
-  // Render Detailed Article Cards
-  function renderArticleResults(data) {
-    const articles = Array.isArray(data.payload) ? data.payload : [];
-    const globalCount = Number(data.globalCount || 0);
-    state.totalCount = globalCount;
-    state.currentArticles = articles;
-    state.currentManifest = [];
+  // Re-render current results in 0ms when toggling between Thumbnails and Cards
+  function renderCurrentState() {
+    syncViewToggleUI();
+    if (state.mode === "manifest") {
+      renderManifestResults();
+    } else if (state.view === "thumbs") {
+      renderArticleThumbnails();
+    } else {
+      renderArticleCards();
+    }
+  }
+
+  // Render View 1: Thumbnail Gallery Grid (Default)
+  function renderArticleThumbnails() {
+    const articles = state.currentArticles;
+    const globalCount = state.totalCount;
 
     const totalPages = Math.max(1, Math.ceil(globalCount / state.pageSize));
     statusText.textContent = `hits: ${globalCount.toLocaleString()}`;
+    updatePaginationUI(totalPages, true);
 
+    if (!articles.length) {
+      resultsContainer.innerHTML = `<div class="result-card"><p>0 results.</p></div>`;
+      return;
+    }
+
+    const fragment = document.createDocumentFragment();
+
+    articles.forEach((article, idx) => {
+      const pdfName = getPdfFilename(article);
+      const tile = document.createElement("article");
+      tile.className = idx >= 10 ? "thumb-tile deferred-card" : "thumb-tile";
+
+      const dateFormatted = article.year && article.month && article.day
+        ? `${article.year}-${String(article.month).padStart(2, "0")}-${String(article.day).padStart(2, "0")}`
+        : (article.date ? article.date.split(",")[0] : "n/a");
+
+      const pageStr = article.page ? `p.${String(article.page).padStart(2, "0")}` : "";
+      const editionStr = article.edition ? `#${article.edition}` : "";
+      const metaRight = [pageStr, editionStr].filter(Boolean).join(" ");
+      const titleText = article.title || pdfName || "untitled";
+
+      const imgHtml = pdfName
+        ? `<div class="thumb-tile-img-wrap" data-preview-idx="${idx}" title="${escapeHtml(titleText)}">
+             <img class="thumb-tile-img" src="${getPageThumbUrl(pdfName, 600)}" alt="${escapeHtml(dateFormatted)} ${escapeHtml(pageStr)}" loading="${idx < 10 ? "eager" : "lazy"}" />
+           </div>`
+        : `<div class="thumb-tile-img-wrap" data-preview-idx="${idx}"><div style="padding:12px;color:#7a7a7a">no scan</div></div>`;
+
+      const footerHtml = pdfName
+        ? `<div class="thumb-tile-footer">
+             <button type="button" class="btn" data-preview-idx="${idx}">[read]</button>
+             <a href="${getPagePdfUrl(pdfName)}" data-open-pdf="${escapeHtml(pdfName)}" class="btn btn-invert" target="_blank" rel="noopener" title="Open ${escapeHtml(pdfName)} in new tab">[page.pdf]</a>
+             <a href="${getIssueZipUrl(pdfName)}" class="btn" target="_blank" rel="noopener" title="Download full daily issue as ZIP">[issue.zip]</a>
+           </div>`
+        : `<div class="thumb-tile-footer"><span class="pdf-filename">no-pdf</span></div>`;
+
+      tile.innerHTML = `
+        <div class="thumb-tile-header">
+          <span class="thumb-tile-date">${escapeHtml(dateFormatted)}</span>
+          <span class="thumb-tile-page">${escapeHtml(metaRight)}</span>
+        </div>
+        ${imgHtml}
+        <div class="thumb-tile-caption" dir="auto" data-preview-idx="${idx}" title="${escapeHtml(titleText)}">${highlightQuery(titleText, state.query)}</div>
+        ${footerHtml}
+      `;
+
+      fragment.appendChild(tile);
+    });
+
+    resultsContainer.replaceChildren(fragment);
+  }
+
+  // Render View 2: Detailed Article Cards
+  function renderArticleCards() {
+    const articles = state.currentArticles;
+    const globalCount = state.totalCount;
+
+    const totalPages = Math.max(1, Math.ceil(globalCount / state.pageSize));
+    statusText.textContent = `hits: ${globalCount.toLocaleString()}`;
     updatePaginationUI(totalPages, true);
 
     if (!articles.length) {
@@ -349,7 +452,6 @@
     articles.forEach((article, idx) => {
       const pdfName = getPdfFilename(article);
       const card = document.createElement("article");
-      // Only defer rendering for off-screen cards outside the initial fold viewport (idx >= 6)
       card.className = idx >= 6 ? "result-card deferred-card" : "result-card";
 
       const dateFormatted = article.year && article.month && article.day
@@ -410,16 +512,20 @@
     resultsContainer.replaceChildren(fragment);
   }
 
-  // Render Fast PDF Manifest Mode (Up to 10,000 unique PDFs from Elasticsearch aggregation)
-  function renderManifestResults(data) {
-    const buckets =
-      data?.payload?.aggregations?.["sterms#newPdfPath"]?.buckets || [];
-    const validBuckets = buckets
-      .filter((b) => b && b.key)
-      .sort((a, b) => b.key.localeCompare(a.key));
+  // Render Fast PDF Manifest Mode (Supports both Thumbs & List)
+  function renderManifestResults() {
+    const validBuckets = [...state.currentManifest];
 
-    state.currentManifest = validBuckets;
-    state.currentArticles = [];
+    if (state.sortBy === "date") {
+      validBuckets.sort((a, b) =>
+        state.order === "ASC"
+          ? a.key.localeCompare(b.key)
+          : b.key.localeCompare(a.key)
+      );
+    } else {
+      validBuckets.sort((a, b) => b.doc_count - a.doc_count);
+    }
+
     state.totalCount = validBuckets.length;
 
     const uniqueDates = new Set(
@@ -434,26 +540,45 @@
       return;
     }
 
-    const displayBuckets = validBuckets.slice(0, 400);
+    const displayBuckets = validBuckets.slice(0, state.view === "thumbs" ? 120 : 400);
     const fragment = document.createDocumentFragment();
 
     displayBuckets.forEach((b, idx) => {
       const pdfName = b.key;
       const { dateStr, page } = formatPdfFilenameMeta(pdfName);
-      const card = document.createElement("div");
-      card.className = idx >= 12 ? "manifest-card deferred-card" : "manifest-card";
 
-      card.innerHTML = `
-        <div class="manifest-info">
-          <span class="manifest-date">${escapeHtml(dateStr)} ${page ? `// p.${String(page).padStart(2, "0")}` : ""}</span>
-          <span class="manifest-sub">${escapeHtml(pdfName)} (${b.doc_count} articles)</span>
-        </div>
-        <div class="card-actions">
-          <a href="${getPagePdfUrl(pdfName)}" data-open-pdf="${escapeHtml(pdfName)}" class="btn btn-invert" target="_blank" rel="noopener">[page.pdf]</a>
-          <a href="${getIssueZipUrl(pdfName)}" class="btn" target="_blank" rel="noopener">[issue.zip]</a>
-        </div>
-      `;
-      fragment.appendChild(card);
+      if (state.view === "thumbs") {
+        const tile = document.createElement("div");
+        tile.className = idx >= 10 ? "thumb-tile deferred-card" : "thumb-tile";
+        tile.innerHTML = `
+          <div class="thumb-tile-header">
+            <span class="thumb-tile-date">${escapeHtml(dateStr)}</span>
+            <span class="thumb-tile-page">${page ? `p.${String(page).padStart(2, "0")}` : ""} (${b.doc_count})</span>
+          </div>
+          <div class="thumb-tile-img-wrap" data-open-pdf="${escapeHtml(pdfName)}" title="Open ${escapeHtml(pdfName)} in new tab">
+            <img class="thumb-tile-img" src="${getPageThumbUrl(pdfName, 600)}" alt="${escapeHtml(pdfName)}" loading="${idx < 10 ? "eager" : "lazy"}" />
+          </div>
+          <div class="thumb-tile-footer">
+            <a href="${getPagePdfUrl(pdfName)}" data-open-pdf="${escapeHtml(pdfName)}" class="btn btn-invert" target="_blank" rel="noopener">[page.pdf]</a>
+            <a href="${getIssueZipUrl(pdfName)}" class="btn" target="_blank" rel="noopener">[issue.zip]</a>
+          </div>
+        `;
+        fragment.appendChild(tile);
+      } else {
+        const card = document.createElement("div");
+        card.className = idx >= 12 ? "manifest-card deferred-card" : "manifest-card";
+        card.innerHTML = `
+          <div class="manifest-info">
+            <span class="manifest-date">${escapeHtml(dateStr)} ${page ? `// p.${String(page).padStart(2, "0")}` : ""}</span>
+            <span class="manifest-sub">${escapeHtml(pdfName)} (${b.doc_count} articles)</span>
+          </div>
+          <div class="card-actions">
+            <a href="${getPagePdfUrl(pdfName)}" data-open-pdf="${escapeHtml(pdfName)}" class="btn btn-invert" target="_blank" rel="noopener">[page.pdf]</a>
+            <a href="${getIssueZipUrl(pdfName)}" class="btn" target="_blank" rel="noopener">[issue.zip]</a>
+          </div>
+        `;
+        fragment.appendChild(card);
+      }
     });
 
     resultsContainer.replaceChildren(fragment);
@@ -547,6 +672,17 @@
     }
   });
 
+  // View Switching (0ms client-side re-render, no network fetch needed)
+  function setViewMode(newView) {
+    if (state.view === newView) return;
+    state.view = newView;
+    renderCurrentState();
+  }
+
+  viewSelect.addEventListener("change", () => setViewMode(viewSelect.value));
+  viewThumbsBtn.addEventListener("click", () => setViewMode("thumbs"));
+  viewCardsBtn.addEventListener("click", () => setViewMode("cards"));
+
   // Form & Filter Event Listeners
   searchForm.addEventListener("submit", (e) => {
     e.preventDefault();
@@ -559,7 +695,7 @@
     executeSearch();
   });
 
-  [fromDateInput, toDateInput, pageSizeSelect, modeSelect].forEach((el) => {
+  [fromDateInput, toDateInput, sortSelect, pageSizeSelect, modeSelect].forEach((el) => {
     el.addEventListener("change", () => {
       state.query = queryInput.value;
       state.fromDate = fromDateInput.value;
@@ -575,11 +711,16 @@
     queryInput.value = "";
     fromDateInput.value = "";
     toDateInput.value = "";
+    sortSelect.value = "relevance:DESC";
+    viewSelect.value = "thumbs";
     pageSizeSelect.value = "24";
     modeSelect.value = "articles";
     state.query = "";
     state.fromDate = "";
     state.toDate = "";
+    state.sortBy = "relevance";
+    state.order = "DESC";
+    state.view = "thumbs";
     state.pageSize = 24;
     state.mode = "articles";
     state.pageNumber = 1;

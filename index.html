@@ -20,7 +20,7 @@
       <label for="quickIssueDate">issue:</label>
       <input type="date" id="quickIssueDate" min="1974-03-26" max="2016-12-31" value="1982-06-06" title="Direct issue date" />
       <button type="button" id="quickZipBtn" class="btn" title="Download full daily issue as .zip">[get.zip]</button>
-      <button type="button" id="quickPage1Btn" class="btn" title="Download page 01 as .pdf">[p01.pdf]</button>
+      <button type="button" id="quickPage1Btn" class="btn" title="Open page 01 as .pdf in new tab">[p01.pdf]</button>
     </div>
   </header>
 
@@ -51,6 +51,22 @@
             <input type="date" id="toDate" min="1974-01-01" max="2017-12-31" />
           </div>
           <div class="ctrl">
+            <label for="sortSelect">sort:</label>
+            <select id="sortSelect">
+              <option value="relevance:DESC" selected>relevance</option>
+              <option value="date:DESC">date (newest)</option>
+              <option value="date:ASC">date (oldest)</option>
+              <option value="source:ASC">source</option>
+            </select>
+          </div>
+          <div class="ctrl">
+            <label for="viewSelect">view:</label>
+            <select id="viewSelect">
+              <option value="thumbs" selected>thumbnails</option>
+              <option value="cards">cards (ocr + thumb)</option>
+            </select>
+          </div>
+          <div class="ctrl">
             <label for="pageSizeSelect">limit:</label>
             <select id="pageSizeSelect">
               <option value="24" selected>24</option>
@@ -59,10 +75,10 @@
             </select>
           </div>
           <div class="ctrl">
-            <label for="modeSelect">mode:</label>
+            <label for="modeSelect">index:</label>
             <select id="modeSelect">
-              <option value="articles" selected>articles (ocr + scan)</option>
-              <option value="manifest">manifest (10k pdfs / 1 req)</option>
+              <option value="articles" selected>articles</option>
+              <option value="manifest">manifest (10k pdfs)</option>
             </select>
           </div>
           <div class="ctrl-right">
@@ -89,13 +105,18 @@
         <span id="latencyBadge" class="badge" hidden>0ms</span>
       </div>
       <div class="infobar-right" id="paginationTop">
+        <div class="view-toggle" role="group" aria-label="Layout toggle">
+          <button type="button" id="viewThumbsBtn" class="btn btn-invert" title="Thumbnail grid view">[thumbs]</button>
+          <button type="button" id="viewCardsBtn" class="btn" title="Detailed article card view">[cards]</button>
+        </div>
+        <span class="sep">|</span>
         <button type="button" id="prevPageBtn" class="btn" disabled>[&lt; prev]</button>
         <span id="pageIndicator" class="page-indicator">1/1</span>
         <button type="button" id="nextPageBtn" class="btn" disabled>[next &gt;]</button>
       </div>
     </section>
 
-    <section id="resultsContainer" class="results-list" aria-label="Search Results"></section>
+    <section id="resultsContainer" class="results-thumbs" aria-label="Search Results"></section>
 
     <div class="bottom-bar" id="paginationBottom" hidden>
       <button type="button" id="prevPageBottomBtn" class="btn">[&lt; prev]</button>
